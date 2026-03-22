@@ -92,6 +92,33 @@ def _seed_profit_drivers_from_csv(db: Session) -> None:
         )
 
 
+def _build_alert_reasons(payload_data: dict, risk_level: str) -> list[str]:
+    reasons: list[str] = []
+
+    budget = float(payload_data.get("budget", 0.0) or 0.0)
+    actual_cost = float(payload_data.get("actual_cost", 0.0) or 0.0)
+    schedule_delay = float(payload_data.get("schedule_delay", 0.0) or 0.0)
+    revenue = float(payload_data.get("revenue", actual_cost * 1.1) or (actual_cost * 1.1))
+
+    if budget > 0:
+        cost_overrun_pct = ((actual_cost - budget) / budget) * 100
+        if cost_overrun_pct > 0:
+            reasons.append(f"Cost exceeded budget by {cost_overrun_pct:.1f}%")
+
+    if schedule_delay > 10:
+        reasons.append(f"Schedule delay is {schedule_delay:.0f} days (> 10 days)")
+
+    if actual_cost > 0:
+        rev_cost_ratio = revenue / actual_cost
+        if rev_cost_ratio < 1:
+            reasons.append(f"Revenue-to-cost ratio is {rev_cost_ratio:.2f} (< 1)")
+
+    if risk_level == "HIGH":
+        reasons.append("Model predicted HIGH risk based on historical project patterns")
+
+    return reasons
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     if MODEL_PATH.exists() and engine is None:
@@ -136,15 +163,34 @@ def predict(payload: PredictRequest, db: Session = Depends(get_db)) -> PredictRe
         top_risk_cause=str(result["top_risk_cause"]),
     )
 
+    risk_level = str(result["risk_level"])
+    trigger_reasons = _build_alert_reasons(payload_data, risk_level)
+
+    has_rule_alert = False
     for alert_type in result.get("early_warning_alerts", []):
         alert_text = str(alert_type)
         if alert_text == "No immediate early warning rule triggered":
             continue
+        has_rule_alert = True
         crud.create_alert(
             db,
             project_id=project.id,
             alert_type=alert_text,
-            alert_message=f"{result['message']} Recommended action: {result['recommended_action']}",
+            alert_message=(
+                f"{result['message']}. Why: {'; '.join(trigger_reasons) if trigger_reasons else 'Rule threshold met'}"
+                f". Recommended action: {result['recommended_action']}"
+            ),
+        )
+
+    if risk_level == "HIGH" and not has_rule_alert:
+        crud.create_alert(
+            db,
+            project_id=project.id,
+            alert_type="High Risk Prediction Alert",
+            alert_message=(
+                f"{result['message']}. Why: {'; '.join(trigger_reasons) if trigger_reasons else 'High risk classification'}"
+                f". Recommended action: {result['recommended_action']}"
+            ),
         )
 
     return PredictResponse(**result)

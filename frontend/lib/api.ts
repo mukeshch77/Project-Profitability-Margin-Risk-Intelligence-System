@@ -22,6 +22,32 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type TableResponse = { rows: Record<string, unknown>[] };
 
+export type WatchlistRow = {
+  project_id: number;
+  budget: number;
+  actual_cost: number;
+  team_size: number;
+  schedule_delay: number;
+  labor_cost: number;
+  resource_utilization: number;
+  project_duration: number;
+  cost_overrun_pct: number;
+  risk_probability: number;
+  risk_level: string;
+  alert_level: string;
+  top_risk_cause: string;
+  root_causes: string;
+  created_at: string | null;
+};
+
+export type ExplainResponse = {
+  project_id: number;
+  risk_probability: number;
+  risk_level: string;
+  top_risk_cause: string;
+  shap_top_features: Array<{ feature: string; impact: number; impact_pct: number }>;
+};
+
 export function getWatchlist() {
   return fetchJson<TableResponse>("/watchlist");
 }
@@ -39,6 +65,10 @@ export function predict(payload: Record<string, unknown>) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getExplanation(projectId: number) {
+  return fetchJson<ExplainResponse>(`/explain/${projectId}`);
 }
 
 export type HealthResponse = {

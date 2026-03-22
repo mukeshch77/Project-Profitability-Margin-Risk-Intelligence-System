@@ -76,7 +76,6 @@ def get_watchlist(db: Session, limit: int = 200) -> list[dict[str, Any]]:
     stmt = (
         select(models.Prediction, models.Project)
         .join(models.Project, models.Prediction.project_id == models.Project.id)
-        .where(models.Prediction.risk_level == "HIGH")
         .order_by(desc(models.Prediction.risk_probability), desc(models.Prediction.created_at))
         .limit(limit)
     )
@@ -98,6 +97,7 @@ def get_watchlist(db: Session, limit: int = 200) -> list[dict[str, Any]]:
                 "project_duration": project.project_duration,
                 "cost_overrun_pct": cost_overrun_pct,
                 "risk_probability": pred.risk_probability,
+                "risk_level": pred.risk_level,
                 "alert_level": pred.risk_level,
                 "top_risk_cause": pred.top_risk_cause,
                 "root_causes": pred.top_risk_cause,
