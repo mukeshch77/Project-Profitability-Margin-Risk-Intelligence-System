@@ -48,6 +48,25 @@ export type ExplainResponse = {
   shap_top_features: Array<{ feature: string; impact: number; impact_pct: number }>;
 };
 
+export type PredictResponse = {
+  risk_probability: number;
+  risk_level: string;
+  top_risk_cause: string;
+  message: string;
+  explanation: string;
+  suggestions: string[];
+  summary: string;
+  early_warning_alerts: string[];
+  recommended_action: string;
+  root_causes: string[];
+  shap_top_features: Array<{ feature: string; impact: number; impact_pct: number }>;
+};
+
+export type SimulateResponse = {
+  risk_probability: number;
+  risk_level: string;
+};
+
 export function getWatchlist() {
   return fetchJson<TableResponse>("/watchlist");
 }
@@ -61,7 +80,14 @@ export function getAlerts() {
 }
 
 export function predict(payload: Record<string, unknown>) {
-  return fetchJson<Record<string, unknown>>("/predict", {
+  return fetchJson<PredictResponse>("/predict", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function simulate(payload: Record<string, unknown>) {
+  return fetchJson<SimulateResponse>("/simulate", {
     method: "POST",
     body: JSON.stringify(payload),
   });

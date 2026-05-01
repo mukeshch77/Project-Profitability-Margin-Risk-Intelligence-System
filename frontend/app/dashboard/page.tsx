@@ -21,6 +21,7 @@ import LoadingSpinner from "../../components/loading-spinner";
 import Modal from "../../components/modal";
 import Nav from "../../components/nav";
 import RiskBadge from "../../components/risk-badge";
+import { dedupeAlerts, getDisplayCauses, groupLatestByProject } from "../../lib/risk-view-helpers";
 import {
   getAlerts,
   getExplanation,
@@ -103,8 +104,8 @@ export default function DashboardPage() {
     setLoading(true);
     Promise.all([getWatchlist(), getAlerts(), getHealth()])
       .then(([w, a, h]) => {
-        setRows(normalizeWatchlist(w.rows));
-        setAlerts(a.rows);
+        setRows(groupLatestByProject(normalizeWatchlist(w.rows)));
+        setAlerts(dedupeAlerts(a.rows as AlertRow[]));
         setHealth(h);
       })
       .catch((e) => setError(String(e.message ?? e)))
@@ -179,11 +180,11 @@ export default function DashboardPage() {
               <p className="mt-1 text-3xl font-semibold">{rows.length}</p>
             </div>
             <div className="panel interactive-panel p-4">
-              <p className="text-xs uppercase tracking-wider text-ink/60">High Risk</p>
+              <p className="text-xs uppercase tracking-wider text-ink/60">High Risk Projects</p>
               <p className="mt-1 text-3xl font-semibold text-red-700">{distribution.find((d) => d.name === "HIGH")?.value ?? 0}</p>
             </div>
             <div className="panel interactive-panel p-4">
-              <p className="text-xs uppercase tracking-wider text-ink/60">Active Alerts</p>
+              <p className="text-xs uppercase tracking-wider text-ink/60">Unique Alerts</p>
               <p className="mt-1 text-3xl font-semibold">{alerts.length}</p>
             </div>
             <div className="panel interactive-panel p-4">
@@ -253,8 +254,8 @@ export default function DashboardPage() {
 
           <section className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="panel p-4">
-              <h2 className="mb-1 text-lg font-semibold">Risk by Team Size</h2>
-              <p className="mb-3 text-sm text-ink/65">Shows how team size affects risk probability.</p>
+              <h2 className="mb-1 text-lg font-semibold">Chance of Problem by Team Size</h2>
+              <p className="mb-3 text-sm text-ink/65">This shows how team size changes problem likelihood.</p>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={teamTrend}>
@@ -269,8 +270,8 @@ export default function DashboardPage() {
             </div>
 
             <div className="panel p-4">
-              <h2 className="mb-1 text-lg font-semibold">Delay vs Cost Overrun Bubble View</h2>
-              <p className="mb-3 text-sm text-ink/65">Color intensity represents risk probability.</p>
+              <h2 className="mb-1 text-lg font-semibold">Delay vs Cost Overrun</h2>
+              <p className="mb-3 text-sm text-ink/65">Bubble color shows chance of problem.</p>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart>
@@ -305,8 +306,8 @@ export default function DashboardPage() {
                   <thead>
                     <tr className="border-b border-ink/15 text-left">
                       <th className="p-2">Project ID</th>
-                      <th className="p-2">Risk</th>
-                      <th className="p-2">Cause</th>
+                      <th className="p-2">Chance of Problem</th>
+                      <th className="p-2">Main Issues</th>
                       <th className="p-2">Action</th>
                     </tr>
                   </thead>
@@ -319,8 +320,9 @@ export default function DashboardPage() {
                             <RiskBadge level={r.risk_level} />
                             <span>{(r.risk_probability * 100).toFixed(1)}%</span>
                           </div>
+                          <p className="mt-1 text-xs text-ink/65">This shows how likely the project is to face problems.</p>
                         </td>
-                        <td className="p-2">{r.top_risk_cause || "No clear cause"}</td>
+                        <td className="p-2">{getDisplayCauses(r).join(", ") || "No clear issue"}</td>
                         <td className="p-2">
                           <button
                             onClick={() => openExplanation(r.project_id)}
@@ -352,8 +354,8 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {alerts.slice(0, 20).map((r, i) => (
-                      <tr key={i} className="border-b border-ink/10">
+                    {alerts.slice(0, 20).map((r) => (
+                      <tr key={`${String(r.project_id ?? "")}-${String(r.alert_message ?? r.alert_type ?? "")}`} className="border-b border-ink/10">
                         <td className="p-2">{String(r.project_id ?? "-")}</td>
                         <td className="p-2">{String(r.alert_type ?? r.alerts ?? "")}</td>
                         <td className="p-2">{String(r.alert_message ?? "")}</td>

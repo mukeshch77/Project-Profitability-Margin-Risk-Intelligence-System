@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+# Load .env file if it exists
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",

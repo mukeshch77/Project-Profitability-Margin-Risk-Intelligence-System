@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from . import models
@@ -61,6 +61,16 @@ def create_alert(
     alert_type: str,
     alert_message: str,
 ) -> models.Alert:
+    existing = db.execute(
+        select(models.Alert).where(
+            models.Alert.project_id == project_id,
+            models.Alert.alert_message == alert_message,
+        )
+    ).scalar_one_or_none()
+
+    if existing is not None:
+        return existing
+
     alert = models.Alert(
         project_id=project_id,
         alert_type=alert_type,
@@ -73,8 +83,22 @@ def create_alert(
 
 
 def get_watchlist(db: Session, limit: int = 200) -> list[dict[str, Any]]:
+    latest_pred_subquery = (
+        select(
+            models.Prediction.project_id.label("project_id"),
+            func.max(models.Prediction.created_at).label("latest_created_at"),
+        )
+        .group_by(models.Prediction.project_id)
+        .subquery()
+    )
+
     stmt = (
         select(models.Prediction, models.Project)
+        .join(
+            latest_pred_subquery,
+            (models.Prediction.project_id == latest_pred_subquery.c.project_id)
+            & (models.Prediction.created_at == latest_pred_subquery.c.latest_created_at),
+        )
         .join(models.Project, models.Prediction.project_id == models.Project.id)
         .order_by(desc(models.Prediction.risk_probability), desc(models.Prediction.created_at))
         .limit(limit)

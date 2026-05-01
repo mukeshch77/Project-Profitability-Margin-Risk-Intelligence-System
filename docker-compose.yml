@@ -1,20 +1,26 @@
+version: '3.9'
+
 services:
+  # PostgreSQL Database (for local development only)
+  # For production, use Supabase instead
   database:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: project-risk-database
     environment:
-      POSTGRES_DB: project_risk_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-project_risk_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d project_risk_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-project_risk_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - app-network
 
   backend:
     build:
@@ -22,24 +28,40 @@ services:
       dockerfile: backend/Dockerfile
     container_name: project-risk-backend
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@database:5432/project_risk_db
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@database:5432/project_risk_db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      MODEL_PATH: ${MODEL_PATH:-outputs/margin_risk_model.joblib}
+      PYTHONUNBUFFERED: 1
     depends_on:
       database:
         condition: service_healthy
     ports:
       - "8000:8000"
+    networks:
+      - app-network
+    restart: unless-stopped
 
   frontend:
     build:
       context: frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     container_name: project-risk-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     depends_on:
       - backend
     ports:
       - "3000:3000"
+    networks:
+      - app-network
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+
+networks:
+  app-network:
+    driver: bridge

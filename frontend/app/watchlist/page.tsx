@@ -7,6 +7,7 @@ import Modal from "../../components/modal";
 import Nav from "../../components/nav";
 import RiskBadge from "../../components/risk-badge";
 import { getExplanation, getWatchlist, type ExplainResponse, type WatchlistRow } from "../../lib/api";
+import { getDisplayCauses, groupLatestByProject } from "../../lib/risk-view-helpers";
 
 function normalize(rows: Record<string, unknown>[]): WatchlistRow[] {
   return rows.map((r) => ({
@@ -51,8 +52,8 @@ function Section({
             <thead>
               <tr className="border-b border-ink/15 text-left">
                 <th className="p-2">Project ID</th>
-                <th className="p-2">Risk %</th>
-                <th className="p-2">Root Cause</th>
+                <th className="p-2">Chance of Problem</th>
+                <th className="p-2">Main Issues</th>
                 <th className="p-2">Explanation</th>
               </tr>
             </thead>
@@ -65,8 +66,9 @@ function Section({
                       <RiskBadge level={r.risk_level} />
                       <span>{(r.risk_probability * 100).toFixed(1)}%</span>
                     </div>
+                    <p className="mt-1 text-xs text-ink/65">This shows how likely the project is to face problems.</p>
                   </td>
-                  <td className="p-2">{r.top_risk_cause || "No clear cause"}</td>
+                  <td className="p-2">{getDisplayCauses(r).join(", ") || "No clear issue"}</td>
                   <td className="p-2">
                     <button
                       onClick={() => onExplain(r.project_id)}
@@ -96,7 +98,7 @@ export default function WatchlistPage() {
   useEffect(() => {
     setLoading(true);
     getWatchlist()
-      .then((data) => setRows(normalize(data.rows)))
+      .then((data) => setRows(groupLatestByProject(normalize(data.rows))))
       .catch((e) => setError(String(e.message ?? e)))
       .finally(() => setLoading(false));
   }, []);
@@ -144,10 +146,10 @@ export default function WatchlistPage() {
         ) : explain ? (
           <div className="space-y-2">
             <p>
-              <strong>Risk:</strong> {(explain.risk_probability * 100).toFixed(1)}% ({explain.risk_level})
+              <strong>Chance of Problem:</strong> {(explain.risk_probability * 100).toFixed(1)}% ({explain.risk_level})
             </p>
             <p>
-              <strong>Main Cause:</strong> {explain.top_risk_cause}
+              <strong>Main Issues:</strong> {explain.top_risk_cause}
             </p>
             <ul className="list-disc pl-5">
               {explain.shap_top_features.map((s, idx) => (

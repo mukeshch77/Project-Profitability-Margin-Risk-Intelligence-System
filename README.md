@@ -251,3 +251,51 @@ Container environment wiring:
   postgresql://postgres:postgres@database:5432/project_risk_db
 - Frontend NEXT_PUBLIC_API_URL points to backend service:
   http://backend:8000
+
+## 8. Deploy to Production (FREE!)
+
+### Quick Start
+```powershell
+# Windows
+deploy.bat
+
+# macOS/Linux
+bash deploy.sh
+```
+
+### Full Deployment Guide
+
+For detailed step-by-step instructions to deploy:
+- **Backend** on Render.com or Railway.app (FastAPI)
+- **Frontend** on Vercel (Next.js)
+- **Database** on Supabase.com (PostgreSQL)
+
+👉 **See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for complete instructions!**
+
+### Quick Summary
+1. Create [Supabase.com](https://supabase.com) PostgreSQL database
+2. Deploy backend to [Render.com](https://render.com) or [Railway.app](https://railway.app)
+3. Deploy frontend to [Vercel.com](https://vercel.com)
+4. Set environment variables for each service
+5. Connect them together
+
+**All services have FREE tiers!** ✨
+
+### Environment Variables
+
+See [.env.example](.env.example) for all available variables:
+
+**Backend (.env or platform env vars)**
+- `DATABASE_URL` - PostgreSQL connection string
+- `CORS_ORIGINS` - Comma-separated allowed origins (security)
+- `ENVIRONMENT` - Set to `production` for cloud deployment
+- `MODEL_PATH` - Path to ML model file
+
+**Frontend (.env or platform env vars)**
+- `NEXT_PUBLIC_API_URL` - Backend API endpoint
+
+### Support
+
+- Production issues? → Check [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) troubleshooting
+- Setup help? → See [DEPLOYMENT_SUMMARY.md](DEPLOYMENT_SUMMARY.md)
+- Local development? → See sections 1-7 above

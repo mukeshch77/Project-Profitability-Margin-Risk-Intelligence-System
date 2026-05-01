@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -10,22 +11,33 @@ from sqlalchemy.orm import Session
 from . import crud, models
 from .database import Base, SessionLocal, engine as db_engine, get_db
 from .risk_engine import RiskEngine
-from .schemas import ExplainResponse, HealthResponse, PredictRequest, PredictResponse, TableResponse
+from .schemas import ExplainResponse, HealthResponse, PredictRequest, PredictResponse, SimulateResponse, TableResponse
 
 
+# Configuration from environment variables
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUTS_DIR = ROOT / "outputs"
-MODEL_PATH = OUTPUTS_DIR / "margin_risk_model.joblib"
+
+# MODEL_PATH can be overridden by environment variable
+MODEL_PATH_ENV = os.getenv("MODEL_PATH")
+if MODEL_PATH_ENV:
+    MODEL_PATH = Path(MODEL_PATH_ENV) if Path(MODEL_PATH_ENV).is_absolute() else ROOT / MODEL_PATH_ENV
+else:
+    MODEL_PATH = OUTPUTS_DIR / "margin_risk_model.joblib"
+
 DRIVERS_PATH = OUTPUTS_DIR / "global_profitability_drivers.csv"
 SHAP_SUMMARY_PATH = OUTPUTS_DIR / "charts" / "global_shap_summary.png"
 
+# CORS configuration - restrict to specific origins in production
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS]  # Remove whitespace
 
 app = FastAPI(title="Project Profitability API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -69,6 +81,18 @@ def _ensure_initialized() -> None:
     if engine is None:
         detail = model_init_error or f"Model not initialized from {MODEL_PATH}"
         raise RuntimeError(detail)
+
+
+def _run_prediction(payload_data: dict) -> dict:
+    try:
+        _ensure_initialized()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Model not initialized: {exc}") from exc
+
+    if engine is None:
+        raise HTTPException(status_code=503, detail="Model not initialized")
+
+    return engine.predict_one(payload_data)
 
 
 def _seed_profit_drivers_from_csv(db: Session) -> None:
@@ -133,16 +157,8 @@ def health() -> HealthResponse:
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(payload: PredictRequest, db: Session = Depends(get_db)) -> PredictResponse:
-    try:
-        _ensure_initialized()
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Model not initialized: {exc}") from exc
-
-    if engine is None:
-        raise HTTPException(status_code=503, detail="Model not initialized")
-
     payload_data = payload.model_dump()
-    result = engine.predict_one(payload_data)
+    result = _run_prediction(payload_data)
 
     project = crud.create_project(
         db,
@@ -194,6 +210,16 @@ def predict(payload: PredictRequest, db: Session = Depends(get_db)) -> PredictRe
         )
 
     return PredictResponse(**result)
+
+
+@app.post("/simulate", response_model=SimulateResponse)
+def simulate(payload: PredictRequest) -> SimulateResponse:
+    payload_data = payload.model_dump()
+    result = _run_prediction(payload_data)
+    return SimulateResponse(
+        risk_probability=float(result["risk_probability"]),
+        risk_level=str(result["risk_level"]),
+    )
 
 
 @app.get("/profit-drivers", response_model=TableResponse)

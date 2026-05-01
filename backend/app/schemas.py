@@ -29,10 +29,18 @@ class PredictResponse(BaseModel):
     risk_level: str
     top_risk_cause: str
     message: str
+    explanation: str
+    suggestions: List[str]
+    summary: str
     early_warning_alerts: List[str]
     recommended_action: str
     root_causes: List[str]
     shap_top_features: List[ExplanationItem]
+
+
+class SimulateResponse(BaseModel):
+    risk_probability: float
+    risk_level: str
 
 
 class ExplainResponse(BaseModel):
