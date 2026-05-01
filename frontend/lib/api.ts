@@ -1,23 +1,39 @@
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://127.0.0.1:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
 
-async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${path} failed: ${res.status} ${text}`);
+function getApiBase() {
+  if (!API_BASE) {
+    throw new Error("NEXT_PUBLIC_API_URL is not configured");
   }
 
-  return (await res.json()) as T;
+  return API_BASE;
+}
+
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = `${getApiBase()}${path}`;
+
+  try {
+    const res = await fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`API ${path} failed: ${res.status} ${text}`);
+    }
+
+    return (await res.json()) as T;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Request to ${path} failed: ${error.message}`);
+    }
+
+    throw error;
+  }
 }
 
 export type TableResponse = { rows: Record<string, unknown>[] };
