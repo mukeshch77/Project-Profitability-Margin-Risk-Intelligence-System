@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: project-risk-backend
+    env: python
+    rootDir: backend
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install -r ../requirements.txt
+    startCommand: gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: MODEL_PATH
+        value: outputs/margin_risk_model.joblib
