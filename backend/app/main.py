@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -12,6 +13,10 @@ from . import crud, models
 from .database import Base, SessionLocal, engine as db_engine, get_db
 from .risk_engine import RiskEngine
 from .schemas import ExplainResponse, HealthResponse, PredictRequest, PredictResponse, SimulateResponse, TableResponse
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # Configuration from environment variables
@@ -28,52 +33,69 @@ else:
 DRIVERS_PATH = OUTPUTS_DIR / "global_profitability_drivers.csv"
 SHAP_SUMMARY_PATH = OUTPUTS_DIR / "charts" / "global_shap_summary.png"
 
-# CORS configuration - restrict to specific origins in production
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
-CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS]  # Remove whitespace
-
+# CORS configuration - allow all origins for Render deployment
 app = FastAPI(title="Project Profitability API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 engine: RiskEngine | None = None
 model_init_error: str | None = None
+_resources_initialized = False
 
 
 @app.on_event("startup")
 def startup_event() -> None:
-    _initialize_resources()
+    """Fast startup - database tables only, lazy load ML model on first request."""
+    logger.info("FastAPI application starting up")
+    try:
+        # Create database tables (fast operation)
+        Base.metadata.create_all(bind=db_engine)
+        logger.info("Database tables initialized")
+    except Exception as exc:
+        logger.warning(f"Database initialization warning: {exc}")
+    logger.info("Application startup complete")
 
 
 def _load_model() -> None:
+    """Lazy load ML model on first request."""
     global engine, model_init_error
     if engine is not None:
         return
 
     try:
+        logger.info("Loading ML model...")
         engine = RiskEngine(MODEL_PATH)
         model_init_error = None
+        logger.info("ML model loaded successfully")
     except Exception as exc:
         engine = None
         model_init_error = f"{type(exc).__name__}: {exc}"
+        logger.error(f"Failed to load ML model: {model_init_error}")
 
 
 def _initialize_resources() -> None:
+    """Initialize heavy resources on first request."""
+    global _resources_initialized
+    if _resources_initialized:
+        return
+    
     _load_model()
-
-    Base.metadata.create_all(bind=db_engine)
 
     db = SessionLocal()
     try:
         _seed_profit_drivers_from_csv(db)
+        logger.info("Profit drivers seeded successfully")
+    except Exception as exc:
+        logger.warning(f"Failed to seed profit drivers: {exc}")
     finally:
         db.close()
-
+    
+    _resources_initialized = True
     # SHAP chart generation is intentionally delegated to a standalone script for stability.
 
 
@@ -143,142 +165,223 @@ def _build_alert_reasons(payload_data: dict, risk_level: str) -> list[str]:
     return reasons
 
 
+@app.get("/")
+async def root() -> dict:
+    """Root endpoint - verify API is running."""
+    logger.info("GET /")
+    return {"message": "API is running", "version": "1.0.0"}
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    if MODEL_PATH.exists() and engine is None:
-        _load_model()
+    """Health check endpoint."""
+    try:
+        logger.info("GET /health")
+        if MODEL_PATH.exists() and engine is None:
+            _load_model()
 
-    return HealthResponse(
-        status="ok",
-        model_loaded=engine is not None,
-        model_error=model_init_error,
-    )
+        return HealthResponse(
+            status="ok",
+            model_loaded=engine is not None,
+            model_error=model_init_error,
+        )
+    except Exception as exc:
+        logger.error(f"Error in /health: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(exc)}") from exc
 
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(payload: PredictRequest, db: Session = Depends(get_db)) -> PredictResponse:
-    payload_data = payload.model_dump()
-    result = _run_prediction(payload_data)
+    """Predict risk for a project."""
+    try:
+        logger.info("POST /predict")
+        # Lazy-load resources on first request
+        if not _resources_initialized:
+            _initialize_resources()
+        
+        payload_data = payload.model_dump()
+        result = _run_prediction(payload_data)
 
-    project = crud.create_project(
-        db,
-        budget=float(payload_data["budget"]),
-        actual_cost=float(payload_data["actual_cost"]),
-        team_size=int(payload_data["team_size"]),
-        schedule_delay=float(payload_data["schedule_delay"]),
-        labor_cost=float(payload_data["labor_cost"]),
-        resource_utilization=float(payload_data["resource_utilization"]),
-        project_duration=float(payload_data["project_duration"]),
-    )
-
-    crud.create_prediction(
-        db,
-        project_id=project.id,
-        risk_probability=float(result["risk_probability"]),
-        risk_level=str(result["risk_level"]),
-        top_risk_cause=str(result["top_risk_cause"]),
-    )
-
-    risk_level = str(result["risk_level"])
-    trigger_reasons = _build_alert_reasons(payload_data, risk_level)
-
-    has_rule_alert = False
-    for alert_type in result.get("early_warning_alerts", []):
-        alert_text = str(alert_type)
-        if alert_text == "No immediate early warning rule triggered":
-            continue
-        has_rule_alert = True
-        crud.create_alert(
+        project = crud.create_project(
             db,
-            project_id=project.id,
-            alert_type=alert_text,
-            alert_message=(
-                f"{result['message']}. Why: {'; '.join(trigger_reasons) if trigger_reasons else 'Rule threshold met'}"
-                f". Recommended action: {result['recommended_action']}"
-            ),
+            budget=float(payload_data["budget"]),
+            actual_cost=float(payload_data["actual_cost"]),
+            team_size=int(payload_data["team_size"]),
+            schedule_delay=float(payload_data["schedule_delay"]),
+            labor_cost=float(payload_data["labor_cost"]),
+            resource_utilization=float(payload_data["resource_utilization"]),
+            project_duration=float(payload_data["project_duration"]),
         )
 
-    if risk_level == "HIGH" and not has_rule_alert:
-        crud.create_alert(
+        crud.create_prediction(
             db,
             project_id=project.id,
-            alert_type="High Risk Prediction Alert",
-            alert_message=(
-                f"{result['message']}. Why: {'; '.join(trigger_reasons) if trigger_reasons else 'High risk classification'}"
-                f". Recommended action: {result['recommended_action']}"
-            ),
+            risk_probability=float(result["risk_probability"]),
+            risk_level=str(result["risk_level"]),
+            top_risk_cause=str(result["top_risk_cause"]),
         )
 
-    return PredictResponse(**result)
+        risk_level = str(result["risk_level"])
+        trigger_reasons = _build_alert_reasons(payload_data, risk_level)
+
+        has_rule_alert = False
+        for alert_type in result.get("early_warning_alerts", []):
+            alert_text = str(alert_type)
+            if alert_text == "No immediate early warning rule triggered":
+                continue
+            has_rule_alert = True
+            crud.create_alert(
+                db,
+                project_id=project.id,
+                alert_type=alert_text,
+                alert_message=(
+                    f"{result['message']}. Why: {'; '.join(trigger_reasons) if trigger_reasons else 'Rule threshold met'}"
+                    f". Recommended action: {result['recommended_action']}"
+                ),
+            )
+
+        if risk_level == "HIGH" and not has_rule_alert:
+            crud.create_alert(
+                db,
+                project_id=project.id,
+                alert_type="High Risk Prediction Alert",
+                alert_message=(
+                    f"{result['message']}. Why: {'; '.join(trigger_reasons) if trigger_reasons else 'High risk classification'}"
+                    f". Recommended action: {result['recommended_action']}"
+                ),
+            )
+
+        return PredictResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error in /predict: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(exc)}") from exc
 
 
 @app.post("/simulate", response_model=SimulateResponse)
 def simulate(payload: PredictRequest) -> SimulateResponse:
-    payload_data = payload.model_dump()
-    result = _run_prediction(payload_data)
-    return SimulateResponse(
-        risk_probability=float(result["risk_probability"]),
-        risk_level=str(result["risk_level"]),
-    )
+    """Simulate prediction without persisting to database."""
+    try:
+        logger.info("POST /simulate")
+        # Lazy-load resources on first request
+        if not _resources_initialized:
+            _initialize_resources()
+        
+        payload_data = payload.model_dump()
+        result = _run_prediction(payload_data)
+        return SimulateResponse(
+            risk_probability=float(result["risk_probability"]),
+            risk_level=str(result["risk_level"]),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error in /simulate: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(exc)}") from exc
 
 
 @app.get("/profit-drivers", response_model=TableResponse)
 def profit_drivers(db: Session = Depends(get_db)) -> TableResponse:
-    rows = crud.get_profit_drivers(db)
-    return TableResponse(rows=rows)
+    """Get global profit drivers."""
+    try:
+        logger.info("GET /profit-drivers")
+        rows = crud.get_profit_drivers(db)
+        return TableResponse(rows=rows)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error in /profit-drivers: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(exc)}") from exc
 
 
 @app.get("/watchlist", response_model=TableResponse)
 def watchlist(db: Session = Depends(get_db)) -> TableResponse:
-    rows = crud.get_watchlist(db)
-    return TableResponse(rows=rows)
+    """Get high-risk projects watchlist."""
+    try:
+        logger.info("GET /watchlist")
+        rows = crud.get_watchlist(db)
+        return TableResponse(rows=rows)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error in /watchlist: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(exc)}") from exc
 
 
 @app.get("/alerts", response_model=TableResponse)
 def alerts(db: Session = Depends(get_db)) -> TableResponse:
-    rows = crud.get_alerts(db)
-    return TableResponse(rows=rows)
+    """Get alert history."""
+    try:
+        logger.info("GET /alerts")
+        rows = crud.get_alerts(db)
+        return TableResponse(rows=rows)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error in /alerts: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(exc)}") from exc
 
 
 @app.get("/explain/{project_id}", response_model=ExplainResponse)
 def explain(project_id: int, db: Session = Depends(get_db)) -> ExplainResponse:
+    """Get SHAP explanation for a project."""
     try:
-        _ensure_initialized()
+        logger.info(f"GET /explain/{project_id}")
+        # Lazy-load resources on first request
+        if not _resources_initialized:
+            _initialize_resources()
+        
+        try:
+            _ensure_initialized()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Model not initialized: {exc}") from exc
+
+        if engine is None:
+            raise HTTPException(status_code=503, detail="Model not initialized")
+
+        project = crud.get_project(db, project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="project_id not found")
+
+        payload = {
+            "budget": float(project.budget),
+            "actual_cost": float(project.actual_cost),
+            "team_size": int(project.team_size),
+            "schedule_delay": float(project.schedule_delay),
+            "labor_cost": float(project.labor_cost),
+            "resource_utilization": float(project.resource_utilization),
+            "project_duration": float(project.project_duration),
+            "revenue": float(project.actual_cost) * 1.1,
+            "profit": float(project.actual_cost) * 0.1,
+            "profit_margin": 0.1,
+        }
+
+        pred = engine.predict_one(payload)
+        return ExplainResponse(
+            project_id=project_id,
+            risk_probability=pred["risk_probability"],
+            risk_level=pred["risk_level"],
+            top_risk_cause=pred["top_risk_cause"],
+            shap_top_features=pred["shap_top_features"],
+        )
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Model not initialized: {exc}") from exc
-
-    if engine is None:
-        raise HTTPException(status_code=503, detail="Model not initialized")
-
-    project = crud.get_project(db, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project_id not found")
-
-    payload = {
-        "budget": float(project.budget),
-        "actual_cost": float(project.actual_cost),
-        "team_size": int(project.team_size),
-        "schedule_delay": float(project.schedule_delay),
-        "labor_cost": float(project.labor_cost),
-        "resource_utilization": float(project.resource_utilization),
-        "project_duration": float(project.project_duration),
-        "revenue": float(project.actual_cost) * 1.1,
-        "profit": float(project.actual_cost) * 0.1,
-        "profit_margin": 0.1,
-    }
-
-    pred = engine.predict_one(payload)
-    return ExplainResponse(
-        project_id=project_id,
-        risk_probability=pred["risk_probability"],
-        risk_level=pred["risk_level"],
-        top_risk_cause=pred["top_risk_cause"],
-        shap_top_features=pred["shap_top_features"],
-    )
+        logger.error(f"Error in /explain/{project_id}: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(exc)}") from exc
 
 
 @app.get("/shap-summary")
 def shap_summary() -> dict:
-    if not SHAP_SUMMARY_PATH.exists():
-        raise HTTPException(status_code=404, detail="SHAP summary chart not found")
-    return {"chart_path": SHAP_SUMMARY_PATH.relative_to(ROOT).as_posix()}
+    """Get SHAP summary chart path."""
+    try:
+        logger.info("GET /shap-summary")
+        if not SHAP_SUMMARY_PATH.exists():
+            raise HTTPException(status_code=404, detail="SHAP summary chart not found")
+        return {"chart_path": SHAP_SUMMARY_PATH.relative_to(ROOT).as_posix()}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Error in /shap-summary: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(exc)}") from exc

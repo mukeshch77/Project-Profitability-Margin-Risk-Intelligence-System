@@ -11,4 +11,4 @@ COPY . .
 
 ENV PYTHONPATH=/app
 
-CMD ["gunicorn", "backend.app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:10000"]
+CMD ["sh", "-c", "gunicorn backend.app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"]
