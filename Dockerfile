@@ -1,4 +1,4 @@
-FROM python:3.11.9-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -9,4 +9,6 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
-CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:10000"]
+ENV PYTHONPATH=/app
+
+CMD ["gunicorn", "backend.app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:10000"]
