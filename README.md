@@ -311,19 +311,30 @@ Default container routing:
 
 ## 🖼️ Screenshots
 
-Add product screenshots here after capturing the deployed UI.
+### Executive Dashboard Overview
 
-### Dashboard
+![Dashboard - Main View](docs/screenshots/Dashboard1.png)
+*Real-time risk monitoring with cost overrun trends, team size analysis, and early warning alerts.*
 
-![Dashboard screenshot placeholder](docs/screenshots/dashboard.png)
+### Dashboard Analytics & Risk Heatmap
 
-### Prediction Form
+![Dashboard - Analytics](docs/screenshots/Dashboard2.png)
+*Profitability driver importance chart and project health status indicators.*
 
-![Prediction form screenshot placeholder](docs/screenshots/predict.png)
+### Dashboard Alerts & Summary
 
-### Watchlist
+![Dashboard - Alerts](docs/screenshots/Dashboard3.png)
+*Early warning rule triggers, risk classification summary, and model performance metrics.*
 
-![Watchlist screenshot placeholder](docs/screenshots/watchlist.png)
+### Project Risk Prediction
+
+![Prediction Form](docs/screenshots/Prediction.png)
+*Interactive prediction interface with 15-feature input form and risk assessment results with SHAP explanations.*
+
+### High-Risk Projects Watchlist
+
+![Risk Watchlist](docs/screenshots/Watchlist.png)
+*Prioritized list of high-risk projects with cost overrun status, schedule delays, and recommended mitigation actions.*
 
 ## 🔮 Future Improvements
 
