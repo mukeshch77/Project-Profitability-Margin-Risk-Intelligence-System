@@ -1,301 +1,342 @@
 # Project Profitability & Margin Risk Intelligence System
 
-This repository now includes a full production-style stack:
+[Frontend Live](https://project-profitability-margin-risk-i-iota.vercel.app) · [Backend Live](https://project-profitability-margin-risk.onrender.com)
 
-- ML training and scoring pipeline
-- FastAPI backend for serving predictions and analytics tables
-- SHAP explainability for local and global model interpretation
-- Rule-based early warning alert engine
-- Next.js dashboard for risk monitoring and interactive predictions
-- Optional weekly monitoring script
-- PostgreSQL persistence with SQLAlchemy
+![Next.js](https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?logo=supabase&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white)
+![Render](https://img.shields.io/badge/Render-111827?logo=render&logoColor=white)
+![Machine%20Learning](https://img.shields.io/badge/Machine%20Learning-6B7280?logo=opencv&logoColor=white)
 
-## Folder structure
+Production-oriented platform for identifying margin erosion, predicting project risk, and surfacing early warning signals through an ML-backed FastAPI service and a Next.js executive dashboard.
+
+## Overview
+
+This repository combines a trained risk model, a database-backed API, and a web dashboard for monitoring project profitability. It is designed for a modern deployment split:
+
+- Frontend on Vercel
+- Backend on Render
+- Managed PostgreSQL on Supabase
+
+The backend loads a serialized ML bundle from `outputs/`, writes prediction records to PostgreSQL, and serves CSV-backed operational reports for the dashboard.
+
+## ✨ Features
+
+- Risk prediction for project margin and delivery health
+- Canonical 15-feature Pydantic request schema for scoring
+- PostgreSQL persistence for projects, predictions, alerts, and profit drivers
+- SHAP-powered explainability for model interpretation
+- CSV-backed dashboard feeds for watchlist and early warning alerts
+- Next.js dashboard for executive visibility and project review
+- Dockerized local stack for backend, frontend, and Postgres
+- Render, Vercel, and Supabase deployment support
+
+## 🧱 Tech Stack
+
+| Layer | Stack |
+| --- | --- |
+| Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
+| Backend | FastAPI, Uvicorn, Gunicorn |
+| ML / Data | Python, scikit-learn joblib bundle, pandas, NumPy, SHAP |
+| Database | PostgreSQL, SQLAlchemy ORM |
+| Hosting | Vercel, Render, Supabase |
+| DevOps | Docker, Docker Compose |
+
+## 🏗️ Architecture Overview
+
+```mermaid
+flowchart LR
+    U[User / Recruiter / Analyst] --> F[Vercel Next.js Frontend]
+    F --> A[Render FastAPI Backend]
+    A --> D[(Supabase PostgreSQL)]
+    A --> M[Loaded ML Bundle\noutputs/margin_risk_model.joblib]
+    A --> R[CSV Reports in outputs/]
+    T[Training Pipeline\nsrc/profitability_margin_risk_system.py] --> M
+    T --> R
+```
+
+Request flow:
+
+1. The user submits a project input from the dashboard or API client.
+2. FastAPI validates the payload and loads the model lazily if needed.
+3. The model produces risk outputs and SHAP-based explanation data.
+4. The backend persists the project and prediction rows in PostgreSQL.
+5. The dashboard consumes the API response plus CSV-backed report feeds.
+
+## 🧠 ML Model
+
+The model bundle is stored at `outputs/margin_risk_model.joblib` and is loaded by `backend/app/risk_engine.py`.
+
+### Canonical prediction features
+
+The current scoring contract expects these 15 core inputs:
+
+| Feature | Purpose |
+| --- | --- |
+| `budget` | Planned project budget |
+| `actual_cost` | Actual project spend |
+| `revenue` | Project revenue |
+| `duration` | Project duration |
+| `team_size` | Team headcount |
+| `risk_score` | Initial risk signal |
+| `client_rating` | Client satisfaction rating |
+| `project_complexity` | Complexity level |
+| `profit_margin` | Margin baseline |
+| `cost_variance` | Cost deviation |
+| `schedule_variance` | Schedule deviation |
+| `resource_utilization` | Resource efficiency |
+| `dependency_score` | Delivery dependency pressure |
+| `change_request_freq` | Scope churn frequency |
+| `market_volatility` | External market pressure |
+
+### What the backend derives
+
+The engine computes additional indicators such as:
+
+- `cost_overrun_pct`
+- `labor_intensity`
+- `delay_intensity`
+- `efficiency_gap`
+- `revenue_to_cost_ratio`
+
+These derived metrics are used for root-cause analysis, risk labeling, and alert generation.
+
+### Output behavior
+
+The `/predict` endpoint returns the core risk result and stores a project snapshot plus prediction row in PostgreSQL. The model engine also produces explainability signals used by the dashboard and monitoring reports.
+
+## 🔌 API Endpoints
+
+Current backend routes are implemented in `backend/app/main.py`.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/` | Basic service status response |
+| `GET` | `/health` | Reports backend health and model load status |
+| `POST` | `/predict` | Validates the 15-feature payload, runs scoring, and persists project/prediction records |
+| `GET` | `/dashboard-data` | Loads `outputs/priority_risk_watchlist.csv` and returns JSON rows |
+| `GET` | `/alerts` | Loads `outputs/early_warning_alerts.csv` and returns JSON rows |
+
+Note: the frontend includes a watchlist view backed by the dashboard data feed. In this repository snapshot, the watchlist dataset is surfaced through `/dashboard-data`.
+
+## 🧪 Curl Examples
+
+### Health check
+
+```bash
+curl https://project-profitability-margin-risk.onrender.com/health
+```
+
+### Predict
+
+```bash
+curl -X POST https://project-profitability-margin-risk.onrender.com/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "budget": 120000,
+    "actual_cost": 140000,
+    "revenue": 165000,
+    "duration": 90,
+    "team_size": 8,
+    "risk_score": 0.42,
+    "client_rating": 4.3,
+    "project_complexity": 7,
+    "profit_margin": 0.15,
+    "cost_variance": 0.12,
+    "schedule_variance": 9,
+    "resource_utilization": 0.71,
+    "dependency_score": 0.38,
+    "change_request_freq": 5,
+    "market_volatility": 0.28
+  }'
+```
+
+### Watchlist feed
+
+```bash
+curl https://project-profitability-margin-risk.onrender.com/dashboard-data
+```
+
+### Alerts
+
+```bash
+curl https://project-profitability-margin-risk.onrender.com/alerts
+```
+
+## 📁 Folder Structure
 
 ```text
 .
-|-- backend/
-|   |-- app/
-|   |   |-- database.py
-|   |   |-- models.py
-|   |   |-- crud.py
-|   |   |-- main.py
-|   |   |-- risk_engine.py
-|   |   |-- schemas.py
-|   |   `-- __init__.py
-|   `-- scripts/
-|       |-- generate_shap_summary.py
-|       `-- weekly_monitor.py
-|-- frontend/
-|   |-- app/
-|   |   |-- dashboard/page.tsx
-|   |   |-- watchlist/page.tsx
-|   |   |-- drivers/page.tsx
-|   |   `-- predict/page.tsx
-|   |-- components/nav.tsx
-|   |-- lib/api.ts
-|   `-- ...next/tailwind config files
-|-- outputs/
-|   |-- margin_risk_model.joblib
-|   |-- project_health_alerts.csv
-|   |-- priority_risk_watchlist.csv
-|   |-- global_profitability_drivers.csv
-|   |-- early_warning_alerts.csv
-|   `-- charts/global_shap_summary.png
-|-- src/
-|   `-- profitability_margin_risk_system.py
-|-- init_db.py
-|-- project_profitability_dataset.csv
-`-- requirements.txt
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── schemas.py
+│   │   ├── models.py
+│   │   ├── crud.py
+│   │   ├── database.py
+│   │   └── risk_engine.py
+│   └── scripts/
+│       ├── weekly_monitor.py
+│       └── generate_shap_summary.py
+├── frontend/
+│   ├── app/
+│   │   ├── dashboard/
+│   │   ├── drivers/
+│   │   ├── predict/
+│   │   └── watchlist/
+│   ├── components/
+│   └── lib/
+├── outputs/
+│   ├── margin_risk_model.joblib
+│   ├── priority_risk_watchlist.csv
+│   ├── early_warning_alerts.csv
+│   └── global_profitability_drivers.csv
+├── src/
+│   └── profitability_margin_risk_system.py
+├── docker-compose.yml
+├── render.yaml
+├── init_db.py
+└── requirements.txt
 ```
 
-## Database configuration
+## ⚙️ Installation
 
-Set PostgreSQL connection string before running backend:
+### Prerequisites
 
-```powershell
-$env:DATABASE_URL="postgresql://postgres:<password>@localhost:5432/project_risk_db"
-```
+- Python 3.11+
+- Node.js 18+
+- PostgreSQL 15 or Supabase Postgres
+- Docker Desktop optional but recommended
 
-Initialize database tables:
+### Clone and install
 
-```powershell
-c:/python313/python.exe init_db.py
-```
-
-## 1. Train the ML pipeline
-
-Install Python dependencies:
-
-```powershell
-c:/python313/python.exe -m pip install -r requirements.txt
-```
-
-Train and generate base artifacts:
-
-```powershell
-c:/python313/python.exe src/profitability_margin_risk_system.py --mode train --data project_profitability_dataset.csv
-```
-
-Core generated artifacts:
-
-- outputs/model_metrics.json
-- outputs/project_health_alerts.csv
-- outputs/priority_risk_watchlist.csv
-- outputs/global_profitability_drivers.csv
-- outputs/margin_risk_model.joblib
-
-The backend now persists runtime data in PostgreSQL tables instead of CSV for:
-
-- projects
-- predictions
-- alerts
-- profit_drivers
-
-## 2. Run the FastAPI backend
-
-From workspace root:
-
-```powershell
-c:/python313/python.exe -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Available endpoints:
-
-- GET /health
-- POST /predict
-- GET /profit-drivers
-- GET /watchlist
-- GET /alerts
-- GET /explain/{project_id}
-- GET /shap-summary
-
-Persistence behavior:
-
-- POST /predict stores a project row and a prediction row in PostgreSQL
-- rule-based alerts are stored in alerts table
-- GET /watchlist reads high-risk predictions from DB
-- GET /alerts reads alert rows from DB
-- GET /profit-drivers reads profit drivers from DB
-
-### Predict request example
-
-```json
-{
-  "budget": 120000,
-  "actual_cost": 140000,
-  "team_size": 8,
-  "schedule_delay": 12,
-  "labor_cost": 35000,
-  "resource_utilization": 0.72,
-  "project_duration": 6
-}
-```
-
-The response includes:
-
-- risk probability and level
-- top risk cause
-- root causes and recommended action
-- rule-based early warning alerts
-- top 3 SHAP feature contributions with impact percentages
-
-## 3. Run the Next.js dashboard
-
-From frontend folder:
-
-```powershell
+```bash
+git clone <your-repo-url>
+cd Project-Profitability-Margin-Risk-Intelligence-System
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 cd frontend
 npm install
+cd ..
 ```
 
-Set API base URL (PowerShell):
+## 🔐 Environment Variables
 
-```powershell
-$env:NEXT_PUBLIC_API_BASE="http://127.0.0.1:8000"
+Use `.env.example` as the starting point.
+
+| Variable | Scope | Purpose | Example |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | Backend | PostgreSQL connection string, including Supabase | `postgresql://postgres:<password>@<host>:5432/postgres` |
+| `CORS_ORIGINS` | Backend | Allowed frontend origins | `http://localhost:3000,https://project-profitability-margin-risk-i-iota.vercel.app` |
+| `ENVIRONMENT` | Backend | Controls dev vs production runtime behavior | `development` or `production` |
+| `MODEL_PATH` | Backend | Path to the trained joblib bundle | `outputs/margin_risk_model.joblib` |
+| `NEXT_PUBLIC_API_URL` | Frontend | Backend API base URL | `http://localhost:8000` or `https://project-profitability-margin-risk.onrender.com` |
+
+For production, Supabase is used as the managed PostgreSQL host through `DATABASE_URL`. No direct Supabase SDK is required for the current backend implementation.
+
+## 🧑‍💻 Local Development
+
+### Backend
+
+```bash
+python init_db.py
+python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Start dashboard:
+### Frontend
 
-```powershell
+```bash
+cd frontend
 npm run dev
 ```
 
-Pages:
+Recommended local URLs:
 
-- /dashboard
-- /watchlist
-- /drivers
-- /predict
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:8000`
+- API docs: `http://localhost:8000/docs`
 
-Features included:
+## 🐳 Docker Usage
 
-- Risk heatmap
-- Cost overrun trend
-- Risk by team size
-- Profitability driver importance chart
-- Early warning alerts table
-- Predict form with JSON upload and SHAP explanation display
+Start the full stack with Docker Compose:
 
-## 4. Early warning alert rules
-
-Rules applied in addition to ML predictions:
-
-- IF cost_overrun_pct > 15% AND schedule_delay > 10 -> Early Margin Erosion Alert
-- IF revenue_to_cost_ratio < 1 -> Profitability Risk
-- IF resource_utilization < 0.6 AND labor_intensity > 0.35 -> Resource Inefficiency Risk
-
-Alerts are persisted to PostgreSQL alerts table.
-
-## 5. Optional weekly monitoring script
-
-Run manually (or via OS scheduler / CI cron):
-
-```powershell
-c:/python313/python.exe backend/scripts/weekly_monitor.py --input project_profitability_dataset.csv
-```
-
-This job:
-
-- scores incoming projects
-- updates outputs/project_health_alerts.csv
-- refreshes outputs/early_warning_alerts.csv
-
-## 6. Generate global SHAP summary chart
-
-```powershell
-c:/python313/python.exe backend/scripts/generate_shap_summary.py
-```
-
-This generates:
-
-- outputs/charts/global_shap_summary.png
-
-## Notes
-
-- SHAP chart generation is handled by a standalone script for runtime stability.
-- If model artifacts are missing, run the training command first.
-
-## 7. Run with Docker Compose
-
-Containerized services included:
-
-- backend (FastAPI + SQLAlchemy + ML/SHAP)
-- frontend (Next.js dashboard)
-- database (PostgreSQL 15)
-
-From project root, run:
-
-```powershell
+```bash
 docker compose up --build
 ```
 
-Expected URLs:
+Services in `docker-compose.yml`:
 
-- Frontend: http://localhost:3000
-- Backend API docs: http://localhost:8000/docs
-- PostgreSQL: localhost:5432 (inside compose network host is database)
+- `database` - PostgreSQL 15 for local development
+- `backend` - FastAPI application
+- `frontend` - Next.js production server
 
-Compose files added:
+Default container routing:
 
-- docker-compose.yml
-- backend/Dockerfile
-- frontend/Dockerfile
-- .dockerignore
-- backend/.dockerignore
-- frontend/.dockerignore
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:8000`
+- PostgreSQL: `localhost:5432`
 
-Container environment wiring:
+## 🚀 Deployment Guide
 
-- Backend DATABASE_URL uses service name database:
-  postgresql://postgres:postgres@database:5432/project_risk_db
-- Frontend NEXT_PUBLIC_API_URL points to backend service:
-  http://backend:8000
+### Backend on Render
 
-## 8. Deploy to Production (FREE!)
+- Use `render.yaml` or create a Render web service manually.
+- Set `rootDir` to `backend`.
+- Set `DATABASE_URL` to your Supabase connection string.
+- Set `CORS_ORIGINS` to your Vercel domain and any local origins you need.
+- Set `MODEL_PATH=outputs/margin_risk_model.joblib`.
 
-### Quick Start
-```powershell
-# Windows
-deploy.bat
+### Frontend on Vercel
 
-# macOS/Linux
-bash deploy.sh
-```
+- Import the `frontend` directory as the app root.
+- Set `NEXT_PUBLIC_API_URL` to the Render backend URL.
+- Redeploy after any backend URL change.
 
-### Full Deployment Guide
+### Supabase Database
 
-For detailed step-by-step instructions to deploy:
-- **Backend** on Render.com or Railway.app (FastAPI)
-- **Frontend** on Vercel (Next.js)
-- **Database** on Supabase.com (PostgreSQL)
+- Create a new Supabase project.
+- Copy the PostgreSQL connection string into `DATABASE_URL`.
+- Ensure the required tables are created with `python init_db.py` or on first backend startup.
 
-👉 **See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for complete instructions!**
+### Deployment topology
 
-### Quick Summary
-1. Create [Supabase.com](https://supabase.com) PostgreSQL database
-2. Deploy backend to [Render.com](https://render.com) or [Railway.app](https://railway.app)
-3. Deploy frontend to [Vercel.com](https://vercel.com)
-4. Set environment variables for each service
-5. Connect them together
+1. Vercel serves the Next.js dashboard.
+2. Render serves the FastAPI API.
+3. Supabase stores projects, predictions, alerts, and driver data.
+4. The backend reads the trained model bundle and CSV reports from `outputs/`.
 
-**All services have FREE tiers!** ✨
+## 🖼️ Screenshots
 
-### Environment Variables
+Add product screenshots here after capturing the deployed UI.
 
-See [.env.example](.env.example) for all available variables:
+### Dashboard
 
-**Backend (.env or platform env vars)**
-- `DATABASE_URL` - PostgreSQL connection string
-- `CORS_ORIGINS` - Comma-separated allowed origins (security)
-- `ENVIRONMENT` - Set to `production` for cloud deployment
-- `MODEL_PATH` - Path to ML model file
+![Dashboard screenshot placeholder](docs/screenshots/dashboard.png)
 
-**Frontend (.env or platform env vars)**
-- `NEXT_PUBLIC_API_URL` - Backend API endpoint
+### Prediction Form
 
-### Support
+![Prediction form screenshot placeholder](docs/screenshots/predict.png)
 
-- Production issues? → Check [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) troubleshooting
-- Setup help? → See [DEPLOYMENT_SUMMARY.md](DEPLOYMENT_SUMMARY.md)
-- Local development? → See sections 1-7 above
+### Watchlist
+
+![Watchlist screenshot placeholder](docs/screenshots/watchlist.png)
+
+## 🔮 Future Improvements
+
+- Add a dedicated migration workflow for PostgreSQL schema changes
+- Expose the watchlist and driver feeds through explicit API endpoints
+- Add authentication and role-based access for enterprise use
+- Add automated model retraining and scheduled report refresh jobs
+- Add CI checks for backend, frontend, and Markdown documentation
+
+## 👤 Author
+
+Project maintained by the repository owner.
+
+---
+
+This README reflects the current production architecture and live deployment layout for the repository.
