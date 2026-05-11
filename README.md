@@ -346,7 +346,20 @@ Default container routing:
 
 ## 👤 Author
 
-Project maintained by the repository owner.
+Project maintained by Me and My Team.
+
+### Team Members
+
+* [@mukeshch77](https://github.com/mukeshch77)
+* [@amanchoudhary1812](https://github.com/amanchoudhary1812)
+* [@SimranSuri30](https://github.com/SimranSuri30)
+
+### Mentors
+
+Under the guidance of:
+
+* [@raygunjose](https://github.com/raygunjose) (Industry Mentor: Xebia)
+* [@AISHIK1](https://github.com/AISHIK1) (Internal Mentor: UPES)
 
 ---
 
